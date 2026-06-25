@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Environment & secrets
+.env
+.env.*
+
+# Downloaded corpus (reproducible via build_corpus.py)
+data/raw/*
+data/chunks/*
+!data/raw/.gitkeep
+!data/chunks/.gitkeep
+
+# Generated at runtime
+*.db
+results/
+
+# OS
+.DS_Store
+temp.txt
+
+# DeepEval cache
+.deepeval/
