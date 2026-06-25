@@ -24,5 +24,8 @@ results/
 .DS_Store
 temp.txt
 
+# Claude Code
+CLAUDE.md
+
 # DeepEval cache
 .deepeval/

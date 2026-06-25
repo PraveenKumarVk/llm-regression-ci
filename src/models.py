@@ -100,6 +100,71 @@ class EarningsAnswer(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Golden dataset
+# ---------------------------------------------------------------------------
+
+FailureModeCategory = Literal[
+    "numerical_extraction",     # exact number must be pulled from text
+    "temporal_precision",       # answer depends on the correct time period
+    "faithfulness",             # model must not hallucinate beyond the context
+    "refusal_correctness",      # answer is NOT_IN_DOCUMENT — model must refuse
+    "cross_document_conflict",  # context contains contradictory figures
+    "multi_hop_calculation",    # answer requires arithmetic across multiple figures
+]
+
+
+class GoldenTestCase(BaseModel):
+    # Identity
+    id: str                             # stable, e.g. "TC_001"
+    created_at: datetime
+    dataset_version: str                # version of the dataset file itself
+
+    # Input
+    question: str
+    context_chunk: str
+    document_id: str
+    chunk_id: str
+    time_period: str
+
+    # Expected output
+    expected_answer_contains: list[str]     # key phrases that MUST appear in the answer
+    expected_citation_contains: str | None  # key phrase the [CITATION: ...] must contain
+    expected_is_refusal: bool               # True when correct answer is NOT_IN_DOCUMENT
+
+    # Failure mode metadata
+    difficulty: Literal["easy", "medium", "hard", "adversarial"]
+    failure_mode_category: FailureModeCategory
+
+    # Human-readable context
+    notes: str                  # why this case was included
+    known_tricky_aspect: str    # what specifically might trip the model
+
+
+class GoldenDataset(BaseModel):
+    """Wrapper that ties a versioned list of test cases to a dataset version string."""
+
+    version: str                        # e.g. "v1.0.0"
+    created_at: datetime
+    cases: list[GoldenTestCase]
+
+    @property
+    def size(self) -> int:
+        return len(self.cases)
+
+    def by_category(self) -> dict[str, list[GoldenTestCase]]:
+        result: dict[str, list[GoldenTestCase]] = {}
+        for case in self.cases:
+            result.setdefault(case.failure_mode_category, []).append(case)
+        return result
+
+    def by_difficulty(self) -> dict[str, list[GoldenTestCase]]:
+        result: dict[str, list[GoldenTestCase]] = {}
+        for case in self.cases:
+            result.setdefault(case.difficulty, []).append(case)
+        return result
+
+
+# ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
 
