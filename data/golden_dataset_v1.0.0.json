@@ -1326,7 +1326,10 @@
       "difficulty": "adversarial",
       "failure_mode_category": "faithfulness",
       "notes": "Tests whether model correctly labels a range as forward-looking guidance vs an actual reported result.",
-      "known_tricky_aspect": "The range $11.5-15.0B sounds factual; model may present it as an actual Q3 2024 result. Intentionally hard: year '2024' is implied by filing context (this is a Q2 2024 10-Q), not stated verbatim in the chunk — chunk only prints '2023' as the comparison year."
+      "known_tricky_aspect": "The range $11.5-15.0B sounds factual; model may present it as an actual Q3 2024 result. Intentionally hard: year '2024' is implied by filing context (this is a Q2 2024 10-Q), not stated verbatim in the chunk — chunk only prints '2023' as the comparison year.",
+      "scorer_notes": {
+        "temporal_precision": "year is implied by filing context; chunk only prints 2023 as comparison year"
+      }
     },
     {
       "id": "TC_072",

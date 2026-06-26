@@ -446,3 +446,40 @@ def test_refusal_cases_answer_not_derivable_from_context():
             )
     if suspicious:
         print("\nREVIEW THESE REFUSAL CASES:\n" + "\n".join(suspicious))
+
+
+@pytest.mark.parametrize(
+    "dimension",
+    [
+        "numerical_accuracy",
+        "refusal_correctness",
+        "faithfulness",
+        "citation_accuracy",
+        "temporal_precision",
+    ],
+)
+def test_scorer_notes_skip_only_on_adversarial_implied(dimension):
+    """
+    Any scorer_notes entry on any dimension must be adversarial+implied.
+    Prevents silently hiding a poorly-grounded case behind a skip note.
+    """
+    ds = load_latest()
+    violations = []
+    for c in ds.cases:
+        if dimension not in c.scorer_notes:
+            continue
+        if not (c.difficulty == "adversarial" and "implied" in c.known_tricky_aspect.lower()):
+            violations.append(
+                f"{c.id}: has scorer_notes[{dimension!r}] but is not "
+                f"adversarial+implied (difficulty={c.difficulty!r}, "
+                f"known_tricky_aspect={c.known_tricky_aspect!r})"
+            )
+    assert violations == [], "\n".join(violations)
+
+
+def test_tc071_has_temporal_precision_skip_note():
+    ds = load_latest()
+    tc71 = next((c for c in ds.cases if c.id == "TC_071"), None)
+    assert tc71 is not None, "TC_071 missing from dataset"
+    assert "temporal_precision" in tc71.scorer_notes
+    assert tc71.scorer_notes["temporal_precision"]
