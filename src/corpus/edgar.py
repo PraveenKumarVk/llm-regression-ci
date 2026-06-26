@@ -76,6 +76,22 @@ async def get_cik(ticker: str, client: httpx.AsyncClient) -> str:
     raise ValueError(f"Ticker '{ticker}' not found in EDGAR company list")
 
 
+def _search_filings_block(
+    block: dict, period_end_date: str
+) -> tuple[str, str, str] | None:
+    """Search one filings block for a matching 10-Q. Returns None if not found."""
+    for form, report_date, accession, filing_date, primary_doc in zip(
+        block["form"],
+        block["reportDate"],
+        block["accessionNumber"],
+        block["filingDate"],
+        block["primaryDocument"],
+    ):
+        if form == "10-Q" and report_date == period_end_date:
+            return accession, filing_date, primary_doc
+    return None
+
+
 async def find_filing(
     cik: str,
     period_end_date: str,
@@ -84,21 +100,27 @@ async def find_filing(
     """
     Return (accession_number, filing_date, primary_document_filename) for the
     10-Q whose reportDate matches period_end_date exactly (YYYY-MM-DD).
-    All three fields come from a single submissions JSON fetch.
+
+    Searches the main submissions JSON first, then supplemental files for
+    prolific filers (e.g. JPMorgan) whose recent history doesn't reach 2024.
     """
     resp = await client.get(f"{EDGAR_SUBMISSIONS}/CIK{cik}.json", headers=HEADERS)
     resp.raise_for_status()
-    filings = resp.json()["filings"]["recent"]
+    payload = resp.json()
 
-    for form, report_date, accession, filing_date, primary_doc in zip(
-        filings["form"],
-        filings["reportDate"],
-        filings["accessionNumber"],
-        filings["filingDate"],
-        filings["primaryDocument"],
-    ):
-        if form == "10-Q" and report_date == period_end_date:
-            return accession, filing_date, primary_doc
+    hit = _search_filings_block(payload["filings"]["recent"], period_end_date)
+    if hit:
+        return hit
+
+    for file_entry in payload["filings"].get("files", []):
+        await asyncio.sleep(0.1)
+        r = await client.get(
+            f"{EDGAR_SUBMISSIONS}/{file_entry['name']}", headers=HEADERS
+        )
+        r.raise_for_status()
+        hit = _search_filings_block(r.json(), period_end_date)
+        if hit:
+            return hit
 
     raise ValueError(
         f"No 10-Q found for CIK {cik} with period_end_date={period_end_date}"

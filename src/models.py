@@ -210,8 +210,9 @@ class RunSummary(BaseModel):
     content_hash: str
     model_id: str
     judge_model_id: str
-    timestamp: datetime
-    total_cases: int
+    dataset_version: str                # which golden dataset was used — tracked
+    timestamp: datetime                 # separately from prompt_version so the
+    total_cases: int                    # eval bar itself can be regression-checked
     citation_rate: float                # fraction where citation_present == True
     not_in_doc_accuracy: float          # accuracy on NOT_IN_DOCUMENT cases
     avg_answer_score: float
