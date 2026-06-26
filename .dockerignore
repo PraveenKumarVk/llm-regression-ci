@@ -1,0 +1,36 @@
+# Version control
+.git/
+.gitignore
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Test infrastructure (not needed in the runtime image)
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Corpus chunks are large and only needed for dataset generation, not eval.
+data/chunks/
+
+# CI eval artifacts (generated at runtime, never baked into the image)
+.eval_results/
+.eval_history/
+
+# Tooling config that has no runtime effect
+.mypy_cache/
+.ruff_cache/
+temp.txt
+CLAUDE.md
