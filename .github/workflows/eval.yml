@@ -1,0 +1,127 @@
+name: LLM Regression Eval
+
+on:
+  pull_request:
+    paths:
+      - 'prompts/**'
+      - 'src/earnings_qa.py'
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so drift detector has enough runs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'     # caches ~/.cache/pip between runs on the same branch
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Restore eval run history
+        uses: actions/cache@v4
+        with:
+          path: .eval_history/
+          # New unique key per run so each eval result is appended, not replaced.
+          # Restore from the nearest cache for this branch, then fall back to main.
+          key: eval-history-${{ github.head_ref || github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            eval-history-${{ github.head_ref || github.ref_name }}-
+            eval-history-main-
+
+      - name: Run eval
+        id: eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Links the report_url in summary.json to this run's artifacts page.
+          EVAL_REPORT_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          python scripts/run_eval_ci.py \
+            --model gpt-4o \
+            --dataset data/golden_dataset_v1.0.0.json \
+            --output-dir .eval_results/ \
+            --history-dir .eval_history/
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report-${{ github.run_id }}
+          path: .eval_results/report.html
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summaryPath = '.eval_results/summary.json';
+            if (!fs.existsSync(summaryPath)) {
+              console.log('No summary.json — eval step may have failed. Skipping comment.');
+              return;
+            }
+
+            const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+            const emoji = { critical: '🔴', warning: '🟡', clean: '🟢' }[summary.severity] ?? '⚪';
+
+            const fmtRate = v => v !== null && v !== undefined ? (v * 100).toFixed(1) + '%' : 'N/A';
+            const fmtDelta = v => {
+              if (v === null || v === undefined) return 'N/A';
+              const sign = v >= 0 ? '+' : '';
+              return sign + (v * 100).toFixed(1) + '%';
+            };
+
+            const dimRows = Object.entries(summary.dimension_summary)
+              .map(([dim, v]) => {
+                const label = dim.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                return `| ${label} | ${fmtRate(v.pass_rate)} | ${fmtDelta(v.delta)} |`;
+              })
+              .join('\n');
+
+            const driftSection = summary.drift_warning
+              ? `\n> ⚠️ **Slow Drift Warning:** ${summary.drift_warning}\n`
+              : '';
+
+            const body = [
+              `## ${emoji} Eval Results — ${summary.severity.toUpperCase()}`,
+              '',
+              '| Metric | Baseline | Current | Delta |',
+              '|--------|----------|---------|-------|',
+              `| Overall Pass Rate | ${fmtRate(summary.baseline_pass_rate)} | ${fmtRate(summary.current_pass_rate)} | ${fmtDelta(summary.delta)} |`,
+              `| Regressions | — | ${summary.regression_count} | — |`,
+              `| Improvements | — | ${summary.improvement_count} | — |`,
+              '',
+              '**Dimension Breakdown:**',
+              '| Dimension | Pass Rate | Delta |',
+              '|-----------|-----------|-------|',
+              dimRows,
+              driftSection,
+              `[View Full HTML Report](${summary.report_url})`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fail on critical regression
+        if: always()
+        run: |
+          if [ ! -f .eval_results/severity.txt ]; then
+            echo "::warning::severity.txt not found — eval may have failed. Not blocking merge."
+            exit 0
+          fi
+          SEVERITY=$(cat .eval_results/severity.txt)
+          if [ "$SEVERITY" = "critical" ]; then
+            echo "::error::Critical regression detected — blocking merge."
+            exit 1
+          fi
+          echo "Severity: $SEVERITY — merge not blocked."
