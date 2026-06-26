@@ -139,6 +139,23 @@ class GoldenTestCase(BaseModel):
     notes: str                  # why this case was included
     known_tricky_aspect: str    # what specifically might trip the model
 
+    # Per-scorer directives — key is ScorerDimension, presence means skip that scorer
+    scorer_notes: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_scorer_notes_keys(self) -> "GoldenTestCase":
+        valid = {
+            "numerical_accuracy", "refusal_correctness",
+            "faithfulness", "citation_accuracy", "temporal_precision",
+        }
+        invalid = set(self.scorer_notes) - valid
+        if invalid:
+            raise ValueError(
+                f"scorer_notes contains invalid dimension keys: {invalid}. "
+                f"Valid keys: {valid}"
+            )
+        return self
+
 
 class GoldenDataset(BaseModel):
     """Wrapper that ties a versioned list of test cases to a dataset version string."""
@@ -167,6 +184,23 @@ class GoldenDataset(BaseModel):
 # ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
+
+ScorerDimension = Literal[
+    "numerical_accuracy",
+    "refusal_correctness",
+    "faithfulness",
+    "citation_accuracy",
+    "temporal_precision",
+]
+
+
+class ScoreResult(BaseModel):
+    score: float
+    passed: bool
+    reasoning: str
+    dimension: ScorerDimension
+    skipped: bool = False
+
 
 class TestCase(BaseModel):
     """A single QA test case drawn from a financial document."""
